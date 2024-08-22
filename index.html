@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Programador de Tareas</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100 p-8">
+    <div class="max-w-2xl mx-auto bg-white p-6 rounded-lg shadow-md">
+        <h1 class="text-2xl font-bold mb-4">Programador de Tareas</h1>
+        
+        <div class="mb-4">
+            <textarea id="taskInput" rows="4" class="w-full p-2 border rounded" placeholder="08:00 | 30 | Desayuno&#10;09:00 | 60 | Revisar correos"></textarea>
+        </div>
+        
+        <div class="flex space-x-2 mb-4">
+            <button id="addTasks" class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">Agregar Tareas</button>
+            <button id="addExampleTasks" class="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600">Agregar Tareas de Ejemplo</button>
+            <button id="undoButton" class="bg-yellow-500 text-white px-4 py-2 rounded hover:bg-yellow-600">Deshacer</button>
+            <button id="redoButton" class="bg-orange-500 text-white px-4 py-2 rounded hover:bg-orange-600">Rehacer</button>
+            <button id="saveButton" class="bg-indigo-500 text-white px-4 py-2 rounded hover:bg-indigo-600">Guardar</button>
+            <button id="loadButton" class="bg-pink-500 text-white px-4 py-2 rounded hover:bg-pink-600">Cargar</button>
+        </div>
+        
+        <div id="taskList" class="mt-4"></div>
+        
+        <div class="mt-4">
+            <button id="startSimulation" class="bg-purple-500 text-white px-4 py-2 rounded hover:bg-purple-600">Iniciar Simulación</button>
+            <span id="currentTime" class="ml-4 font-bold"></span>
+        </div>
+        
+        <div id="activeTasks" class="mt-4"></div>
+        
+        <div id="summary" class="mt-4 font-bold"></div>
+    </div>
+
+    <script>
+        let tasks = [];
+        let currentIndex = 0;
+        let completedTasks = 0;
+        let simulationInterval;
+        let activeTasks = [];
+        let history = [];
+        let historyIndex = -1;
+
+        const exampleTasks = `08:00 | 30 | Desayuno
+09:00 | 60 | Revisar correos
+10:30 | 45 | Llamada con cliente
+11:30 | 90 | Trabajar en proyecto A
+13:00 | 60 | Almuerzo
+14:00 | 120 | Reunión de equipo
+16:00 | 60 | Ejercicio
+17:00 | 90 | Planificación semanal`;
+
+        document.getElementById('addExampleTasks').addEventListener('click', () => {
+            document.getElementById('taskInput').value = exampleTasks;
+        });
+
+        document.getElementById('addTasks').addEventListener('click', () => {
+            const input = document.getElementById('taskInput').value;
+            tasks = input.split('\n').map(line => {
+                const [time, duration, description] = line.split('|').map(s => s.trim());
+                return { time, duration: parseInt(duration), description, completed: false };
+            });
+            addToHistory();
+            renderTasks();
+        });
+
+        function renderTasks() {
+            const taskList = document.getElementById('taskList');
+            taskList.innerHTML = tasks.map((task, index) => `
+                <div class="flex items-center mb-2">
+                    <input type="checkbox" ${task.completed ? 'checked' : ''} onchange="toggleTask(${index})" class="mr-2">
+                    <span>${task.time} - ${task.description} (${task.duration} min)</span>
+                </div>
+            `).join('');
+        }
+
+        function toggleTask(index) {
+            tasks[index].completed = !tasks[index].completed;
+            addToHistory();
+            renderTasks();
+        }
+
+        document.getElementById('startSimulation').addEventListener('click', startSimulation);
+
+        function startSimulation() {
+            currentIndex = 0;
+            completedTasks = 0;
+            activeTasks = [];
+            document.getElementById('startSimulation').disabled = true;
+            document.getElementById('taskList').classList.add('hidden');
+            simulationInterval = setInterval(simulateTime, 83.33);
+        }
+
+        function simulateTime() {
+            const currentTime = new Date();
+            currentTime.setHours(0, 0, 0, 0);
+            currentTime.setMinutes(currentTime.getMinutes() + currentIndex);
+            
+            const timeString = currentTime.toTimeString().slice(0, 5);
+            document.getElementById('currentTime').textContent = timeString;
+
+            const newTask = tasks.find(task => task.time === timeString);
+            if (newTask) {
+                activeTasks.push(newTask);
+                renderActiveTasks();
+            }
+
+            if (currentIndex >= 24 * 60) {
+                clearInterval(simulationInterval);
+                showSummary();
+            }
+
+            currentIndex++;
+        }
+
+        function renderActiveTasks() {
+            const activeTasksDiv = document.getElementById('activeTasks');
+            activeTasksDiv.innerHTML = activeTasks.map((task, index) => `
+                <div class="p-4 bg-yellow-100 rounded mb-2">
+                    <h2 class="font-bold">Tarea Actual:</h2>
+                    <p>${task.time} - ${task.description} (${task.duration} min)</p>
+                    <button onclick="completeTask(${index})" class="mt-2 bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600">
+                        Marcar como Completada
+                    </button>
+                </div>
+            `).join('');
+        }
+
+        function completeTask(index) {
+            const task = activeTasks[index];
+            task.completed = true;
+            completedTasks++;
+            activeTasks.splice(index, 1);
+            renderActiveTasks();
+        }
+
+        function showSummary() {
+            document.getElementById('summary').textContent = `Tareas completadas: ${completedTasks} de ${tasks.length}`;
+            document.getElementById('startSimulation').disabled = false;
+            document.getElementById('taskList').classList.remove('hidden');
+        }
+
+        function addToHistory() {
+            history = history.slice(0, historyIndex + 1);
+            history.push(JSON.stringify(tasks));
+            historyIndex++;
+            updateUndoRedoButtons();
+        }
+
+        function undo() {
+            if (historyIndex > 0) {
+                historyIndex--;
+                tasks = JSON.parse(history[historyIndex]);
+                renderTasks();
+            }
+            updateUndoRedoButtons();
+        }
+
+        function redo() {
+            if (historyIndex < history.length - 1) {
+                historyIndex++;
+                tasks = JSON.parse(history[historyIndex]);
+                renderTasks();
+            }
+            updateUndoRedoButtons();
+        }
+
+        function updateUndoRedoButtons() {
+            document.getElementById('undoButton').disabled = historyIndex <= 0;
+            document.getElementById('redoButton').disabled = historyIndex >= history.length - 1;
+        }
+
+        function saveState() {
+            const state = JSON.stringify({
+                tasks: tasks,
+                history: history,
+                historyIndex: historyIndex
+            });
+            localStorage.setItem('taskSchedulerState', state);
+            alert('Estado guardado con éxito');
+        }
+
+        function loadState() {
+            const state = localStorage.getItem('taskSchedulerState');
+            if (state) {
+                const parsedState = JSON.parse(state);
+                tasks = parsedState.tasks;
+                history = parsedState.history;
+                historyIndex = parsedState.historyIndex;
+                renderTasks();
+                updateUndoRedoButtons();
+                alert('Estado cargado con éxito');
+            } else {
+                alert('No se encontró ningún estado guardado');
+            }
+        }
+
+        document.getElementById('undoButton').addEventListener('click', undo);
+        document.getElementById('redoButton').addEventListener('click', redo);
+        document.getElementById('saveButton').addEventListener('click', saveState);
+        document.getElementById('loadButton').addEventListener('click', loadState);
+
+        updateUndoRedoButtons();
+    </script>
+</body>
+</html>
